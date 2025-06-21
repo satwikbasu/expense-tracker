@@ -20,6 +20,7 @@ const LOCAL_KEYS = {
   categories: 'et_categories',
   expenses: 'et_expenses',
   dark: 'et_dark',
+  currentMonth: 'et_current_month',
 };
 
 interface Category {
@@ -38,8 +39,12 @@ interface Expense {
 }
 
 const defaultCategories: Category[] = [
-  { id: 'food', name: 'Food', color: 'bg-teal-500 text-white', icon: '🍔' },
-  { id: 'transport', name: 'Transport', color: 'bg-indigo-500 text-white', icon: '🚗' },
+  { id: 'food', name: 'Food', color: '#14b8a6', icon: '🍔' },
+  { id: 'transport', name: 'Transport', color: '#6366f1', icon: '🚗' },
+];
+
+const colorOptions = [
+  '#14b8a6', '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#ef4444', '#10b981', '#3b82f6', '#f97316', '#6b7280'
 ];
 
 function App() {
@@ -55,10 +60,14 @@ function App() {
   const [showEditCategory, setShowEditCategory] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [newCategoryName, setNewCategoryName] = useState('');
-  const [newCategoryColor, setNewCategoryColor] = useState('bg-gray-700 text-white');
+  const [newCategoryColor, setNewCategoryColor] = useState('#6b7280');
   const [newCategoryIcon, setNewCategoryIcon] = useState('💡');
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
+  const [currentMonth, setCurrentMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
 
   // Load from localStorage
   useEffect(() => {
@@ -72,6 +81,8 @@ function App() {
     if (exps) setExpenses(JSON.parse(exps));
     const dark = localStorage.getItem(LOCAL_KEYS.dark);
     if (dark === '1') setDarkMode(true);
+    const month = localStorage.getItem(LOCAL_KEYS.currentMonth);
+    if (month) setCurrentMonth(month);
   }, []);
 
   // Persist to localStorage
@@ -79,6 +90,7 @@ function App() {
   useEffect(() => { localStorage.setItem(LOCAL_KEYS.savings, String(savingsGoal)); }, [savingsGoal]);
   useEffect(() => { localStorage.setItem(LOCAL_KEYS.categories, JSON.stringify(categories)); }, [categories]);
   useEffect(() => { localStorage.setItem(LOCAL_KEYS.expenses, JSON.stringify(expenses)); }, [expenses]);
+  useEffect(() => { localStorage.setItem(LOCAL_KEYS.currentMonth, currentMonth); }, [currentMonth]);
   useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add('dark');
@@ -89,8 +101,15 @@ function App() {
     }
   }, [darkMode]);
 
-  // Calculations
-  const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+  // Filter expenses by current month
+  const currentMonthExpenses = expenses.filter(exp => {
+    const expenseDate = new Date(exp.date);
+    const expenseMonth = `${expenseDate.getFullYear()}-${String(expenseDate.getMonth() + 1).padStart(2, '0')}`;
+    return expenseMonth === currentMonth;
+  });
+
+  // Calculations for current month
+  const totalExpenses = currentMonthExpenses.reduce((sum, e) => sum + e.amount, 0);
   const remainingFunds = salary - totalExpenses;
   const savingsProgress = salary > 0 && savingsGoal > 0 ? Math.min(100, Math.round(((salary - totalExpenses) / savingsGoal) * 100)) : 0;
 
@@ -108,6 +127,10 @@ function App() {
     setShowExpenseModal(false);
   }
 
+  function handleDeleteExpense(expenseId: string) {
+    setExpenses(expenses.filter(exp => exp.id !== expenseId));
+  }
+
   function handleAddCategory(e: React.FormEvent) {
     e.preventDefault();
     if (!newCategoryName.trim()) return;
@@ -117,7 +140,7 @@ function App() {
       { id, name: newCategoryName, color: newCategoryColor, icon: newCategoryIcon },
     ]);
     setNewCategoryName('');
-    setNewCategoryColor('bg-gray-700 text-white');
+    setNewCategoryColor('#6b7280');
     setNewCategoryIcon('💡');
     setShowAddCategory(false);
   }
@@ -131,7 +154,7 @@ function App() {
         : cat
     ));
     setNewCategoryName('');
-    setNewCategoryColor('bg-gray-700 text-white');
+    setNewCategoryColor('#6b7280');
     setNewCategoryIcon('💡');
     setEditingCategory(null);
     setShowEditCategory(false);
@@ -166,6 +189,36 @@ function App() {
     return categories.find(c => c.id === id) || defaultCategories[0];
   }
 
+  function formatMonth(monthString: string) {
+    const [year, month] = monthString.split('-');
+    const date = new Date(parseInt(year), parseInt(month) - 1);
+    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+  }
+
+  function changeMonth(direction: 'prev' | 'next') {
+    const [year, month] = currentMonth.split('-').map(Number);
+    let newYear = year;
+    let newMonth = month;
+
+    if (direction === 'prev') {
+      if (month === 1) {
+        newMonth = 12;
+        newYear = year - 1;
+      } else {
+        newMonth = month - 1;
+      }
+    } else {
+      if (month === 12) {
+        newMonth = 1;
+        newYear = year + 1;
+      } else {
+        newMonth = month + 1;
+      }
+    }
+
+    setCurrentMonth(`${newYear}-${String(newMonth).padStart(2, '0')}`);
+  }
+
   // UI
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 dark:bg-gray-900 flex flex-col">
@@ -185,6 +238,29 @@ function App() {
         </button>
       </header>
       <main className="flex-1 w-full max-w-md mx-auto flex flex-col gap-6 p-4 sm:p-6">
+        {/* Monthly Calendar Navigation */}
+        <section className="rounded-2xl shadow-xl bg-white/80 dark:bg-gray-800/80 backdrop-blur border border-blue-900/10 dark:border-gray-700/40 p-5 flex flex-col gap-2 relative overflow-hidden">
+          <h2 className="font-semibold text-base mb-2">Monthly View</h2>
+          <div className="flex items-center justify-between">
+            <button
+              className="w-10 h-10 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 rounded-full flex items-center justify-center hover:bg-blue-200 dark:hover:bg-blue-800/60 transition"
+              onClick={() => changeMonth('prev')}
+            >
+              ←
+            </button>
+            <span className="font-semibold text-lg">{formatMonth(currentMonth)}</span>
+            <button
+              className="w-10 h-10 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 rounded-full flex items-center justify-center hover:bg-blue-200 dark:hover:bg-blue-800/60 transition"
+              onClick={() => changeMonth('next')}
+            >
+              →
+            </button>
+          </div>
+          <div className="text-xs text-gray-400 text-center">
+            {currentMonthExpenses.length} expenses this month
+          </div>
+        </section>
+
         {/* Salary & Remaining Funds */}
         <section className="rounded-2xl shadow-xl bg-white/80 dark:bg-gray-800/80 backdrop-blur border border-teal-900/10 dark:border-gray-700/40 p-5 flex flex-col gap-2 relative overflow-hidden">
           <h2 className="font-semibold text-base flex items-center gap-2">Monthly Salary <span className="text-xs text-gray-400">(₹)</span></h2>
@@ -236,7 +312,12 @@ function App() {
             {categories.map(cat => (
               <div
                 key={cat.id}
-                className={`flex items-center gap-1 px-3 py-2 rounded-full cursor-pointer border ${cat.color} ${selectedCategory === cat.id ? 'ring-2 ring-purple-400 dark:ring-purple-300' : ''} transition shadow-sm`}
+                className={`flex items-center gap-1 px-3 py-2 rounded-full cursor-pointer border transition shadow-sm`}
+                style={{ 
+                  backgroundColor: cat.color + '20', 
+                  borderColor: cat.color + '40',
+                  color: cat.color 
+                }}
                 onClick={() => setSelectedCategory(cat.id)}
               >
                 <span className="text-lg">{cat.icon}</span>
@@ -281,17 +362,20 @@ function App() {
                 onChange={e => setNewCategoryIcon(e.target.value)}
                 maxLength={2}
               />
-              <select
-                className="input input-bordered w-full max-w-xs"
-                value={newCategoryColor}
-                onChange={e => setNewCategoryColor(e.target.value)}
-              >
-                <option value="bg-teal-500 text-white">Teal</option>
-                <option value="bg-indigo-500 text-white">Indigo</option>
-                <option value="bg-purple-500 text-white">Purple</option>
-                <option value="bg-pink-500 text-white">Pink</option>
-                <option value="bg-gray-700 text-white">Gray</option>
-              </select>
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium">Choose Color:</label>
+                <div className="flex flex-wrap gap-2">
+                  {colorOptions.map(color => (
+                    <button
+                      key={color}
+                      type="button"
+                      className={`w-8 h-8 rounded-full border-2 transition-all ${newCategoryColor === color ? 'border-gray-800 scale-110' : 'border-gray-300'}`}
+                      style={{ backgroundColor: color }}
+                      onClick={() => setNewCategoryColor(color)}
+                    />
+                  ))}
+                </div>
+              </div>
               <div className="flex gap-2">
                 <button type="submit" className="btn btn-primary bg-purple-500 hover:bg-purple-600 text-white font-semibold rounded shadow transition">Add</button>
                 <button type="button" className="btn btn-ghost" onClick={() => setShowAddCategory(false)}>Cancel</button>
@@ -316,17 +400,20 @@ function App() {
                 onChange={e => setNewCategoryIcon(e.target.value)}
                 maxLength={2}
               />
-              <select
-                className="input input-bordered w-full max-w-xs"
-                value={newCategoryColor}
-                onChange={e => setNewCategoryColor(e.target.value)}
-              >
-                <option value="bg-teal-500 text-white">Teal</option>
-                <option value="bg-indigo-500 text-white">Indigo</option>
-                <option value="bg-purple-500 text-white">Purple</option>
-                <option value="bg-pink-500 text-white">Pink</option>
-                <option value="bg-gray-700 text-white">Gray</option>
-              </select>
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium">Choose Color:</label>
+                <div className="flex flex-wrap gap-2">
+                  {colorOptions.map(color => (
+                    <button
+                      key={color}
+                      type="button"
+                      className={`w-8 h-8 rounded-full border-2 transition-all ${newCategoryColor === color ? 'border-gray-800 scale-110' : 'border-gray-300'}`}
+                      style={{ backgroundColor: color }}
+                      onClick={() => setNewCategoryColor(color)}
+                    />
+                  ))}
+                </div>
+              </div>
               <div className="flex gap-2">
                 <button type="submit" className="btn btn-primary bg-purple-500 hover:bg-purple-600 text-white font-semibold rounded shadow transition">Update</button>
                 <button type="button" className="btn btn-ghost" onClick={() => { setShowEditCategory(false); setEditingCategory(null); }}>Cancel</button>
@@ -347,15 +434,29 @@ function App() {
             </button>
           </div>
           <ul className="divide-y divide-gray-200 dark:divide-gray-700">
-            {expenses.length === 0 && <li className="py-4 text-gray-400 text-center">No expenses yet.</li>}
-            {expenses.map(exp => (
-              <li key={exp.id} className="py-3 flex justify-between items-center hover:bg-pink-50 dark:hover:bg-pink-900/20 rounded transition">
+            {currentMonthExpenses.length === 0 && <li className="py-4 text-gray-400 text-center">No expenses this month.</li>}
+            {currentMonthExpenses.map(exp => (
+              <li key={exp.id} className="py-3 flex justify-between items-center hover:bg-pink-50 dark:hover:bg-pink-900/20 rounded transition group">
                 <div className="flex items-center gap-2">
-                  <span className={`text-xs px-2 py-1 rounded-full ${getCategoryById(exp.categoryId).color}`}>{getCategoryById(exp.categoryId).icon}</span>
+                  <span 
+                    className="text-xs px-2 py-1 rounded-full text-white"
+                    style={{ backgroundColor: getCategoryById(exp.categoryId).color }}
+                  >
+                    {getCategoryById(exp.categoryId).icon}
+                  </span>
                   <span className="font-medium">{exp.label}</span>
                   <span className="text-xs text-gray-400 ml-2">({getCategoryById(exp.categoryId).name})</span>
                 </div>
-                <span className="font-semibold text-pink-600 dark:text-pink-300">₹{exp.amount.toFixed(2)}</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-pink-600 dark:text-pink-300">₹{exp.amount.toFixed(2)}</span>
+                  <button
+                    className="w-6 h-6 bg-red-500/80 rounded-full flex items-center justify-center text-xs text-white hover:bg-red-600/80 transition opacity-0 group-hover:opacity-100"
+                    onClick={() => handleDeleteExpense(exp.id)}
+                    title="Delete expense"
+                  >
+                    🗑️
+                  </button>
+                </div>
               </li>
             ))}
           </ul>
@@ -397,7 +498,7 @@ function App() {
             </div>
           )}
           <div className="flex justify-between text-sm text-gray-500 mt-2 border-t pt-2">
-            <span>Total:</span>
+            <span>Total ({formatMonth(currentMonth)}):</span>
             <span className="font-semibold text-pink-600 dark:text-pink-300">₹{totalExpenses.toFixed(2)}</span>
           </div>
         </section>

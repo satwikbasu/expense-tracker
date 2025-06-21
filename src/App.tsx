@@ -1,4 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
+import { Pie } from 'react-chartjs-2';
+
+ChartJS.register(ArcElement, Tooltip, Legend);
 
 // Helper to evaluate arithmetic expressions safely
 function evaluateExpression(expr: string): number | null {
@@ -63,6 +67,7 @@ function App() {
   const [newCategoryColor, setNewCategoryColor] = useState('#6b7280');
   const [newCategoryIcon, setNewCategoryIcon] = useState('💡');
   const [showExpenseModal, setShowExpenseModal] = useState(false);
+  const [showPieChart, setShowPieChart] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(() => {
     const now = new Date();
@@ -112,6 +117,56 @@ function App() {
   const totalExpenses = currentMonthExpenses.reduce((sum, e) => sum + e.amount, 0);
   const remainingFunds = salary - totalExpenses;
   const savingsProgress = salary > 0 && savingsGoal > 0 ? Math.min(100, Math.round(((salary - totalExpenses) / savingsGoal) * 100)) : 0;
+
+  // Calculate category totals for pie chart
+  const categoryTotals = categories.map(cat => {
+    const total = currentMonthExpenses
+      .filter(exp => exp.categoryId === cat.id)
+      .reduce((sum, exp) => sum + exp.amount, 0);
+    return {
+      category: cat,
+      total,
+      percentage: totalExpenses > 0 ? (total / totalExpenses) * 100 : 0
+    };
+  }).filter(item => item.total > 0);
+
+  // Pie chart data
+  const pieChartData = {
+    labels: categoryTotals.map(item => `${item.category.name} (${item.percentage.toFixed(1)}%)`),
+    datasets: [
+      {
+        data: categoryTotals.map(item => item.total),
+        backgroundColor: categoryTotals.map(item => item.category.color),
+        borderColor: categoryTotals.map(item => item.category.color + '80'),
+        borderWidth: 2,
+      },
+    ],
+  };
+
+  const pieChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'bottom' as const,
+        labels: {
+          color: darkMode ? '#f3f4f6' : '#374151',
+          padding: 20,
+          usePointStyle: true,
+          pointStyle: 'circle',
+        },
+      },
+      tooltip: {
+        callbacks: {
+          label: function(context: any) {
+            const label = context.label || '';
+            const value = context.parsed;
+            return `${label}: ₹${value.toFixed(2)}`;
+          }
+        }
+      }
+    },
+  };
 
   // Handlers
   function handleAddExpense(e: React.FormEvent) {
@@ -422,18 +477,28 @@ function App() {
           )}
         </section>
         {/* Expenses */}
-        <section className="rounded-2xl shadow-xl bg-white/80 dark:bg-gray-800/80 backdrop-blur border border-pink-900/10 dark:border-gray-700/40 p-5 flex flex-col gap-2 relative overflow-hidden">
+        <section className="rounded-2xl shadow-xl bg-white/80 dark:bg-gray-800/80 backdrop-blur border border-pink-900/10 dark:border-gray-700/40 p-5 flex flex-col gap-2 relative overflow-hidden" style={{ minHeight: '500px' }}>
           <div className="flex items-center justify-between mb-2">
             <h2 className="font-semibold text-base">Expenses</h2>
-            <button
-              className="w-10 h-10 bg-gradient-to-br from-pink-500 to-teal-500 text-white rounded-full shadow-lg flex items-center justify-center text-xl hover:scale-110 active:scale-95 transition-all"
-              onClick={() => setShowExpenseModal(true)}
-              aria-label="Add Expense"
-            >
-              +
-            </button>
+            <div className="flex gap-2">
+              <button
+                className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 text-white rounded-full shadow-lg flex items-center justify-center text-lg hover:scale-110 active:scale-95 transition-all"
+                onClick={() => setShowPieChart(true)}
+                aria-label="View Pie Chart"
+                title="View Expense Breakdown"
+              >
+                📊
+              </button>
+              <button
+                className="w-10 h-10 bg-gradient-to-br from-pink-500 to-teal-500 text-white rounded-full shadow-lg flex items-center justify-center text-xl hover:scale-110 active:scale-95 transition-all"
+                onClick={() => setShowExpenseModal(true)}
+                aria-label="Add Expense"
+              >
+                +
+              </button>
+            </div>
           </div>
-          <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+          <ul className="divide-y divide-gray-200 dark:divide-gray-700 flex-1">
             {currentMonthExpenses.length === 0 && <li className="py-4 text-gray-400 text-center">No expenses this month.</li>}
             {currentMonthExpenses.map(exp => (
               <li key={exp.id} className="py-3 flex justify-between items-center hover:bg-pink-50 dark:hover:bg-pink-900/20 rounded transition group">
@@ -462,8 +527,8 @@ function App() {
           </ul>
           {/* Modal for Adding Expense */}
           {showExpenseModal && (
-            <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-              <form className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-6 flex flex-col gap-3 w-full max-w-sm animate-fade-in" onSubmit={handleAddExpense}>
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+              <form className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-6 flex flex-col gap-3 w-full max-w-sm max-h-[90vh] overflow-y-auto" onSubmit={handleAddExpense}>
                 <h3 className="font-semibold text-lg mb-2">Add Expense</h3>
                 <input
                   type="text"
@@ -495,6 +560,40 @@ function App() {
                   <button type="button" className="btn btn-ghost flex-1" onClick={() => setShowExpenseModal(false)}>Cancel</button>
                 </div>
               </form>
+            </div>
+          )}
+          {/* Pie Chart Modal */}
+          {showPieChart && (
+            <div 
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+              onClick={() => setShowPieChart(false)}
+            >
+              <div 
+                className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-6 flex flex-col gap-4 w-full max-w-md max-h-[90vh] overflow-y-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-lg">Expense Breakdown - {formatMonth(currentMonth)}</h3>
+                  <button
+                    className="w-8 h-8 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 transition"
+                    onClick={() => setShowPieChart(false)}
+                  >
+                    ✕
+                  </button>
+                </div>
+                {categoryTotals.length > 0 ? (
+                  <div className="h-64">
+                    <Pie data={pieChartData} options={pieChartOptions} />
+                  </div>
+                ) : (
+                  <div className="h-64 flex items-center justify-center text-gray-400">
+                    No expenses to display
+                  </div>
+                )}
+                <div className="text-xs text-gray-400 text-center">
+                  Total: ₹{totalExpenses.toFixed(2)}
+                </div>
+              </div>
             </div>
           )}
           <div className="flex justify-between text-sm text-gray-500 mt-2 border-t pt-2">
